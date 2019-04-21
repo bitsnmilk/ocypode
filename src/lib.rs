@@ -7,43 +7,20 @@ use futures::future::IntoFuture;
 use hyper::service::{NewService, Service};
 use hyper::{Body, Request, Response, Server};
 
-#[derive(Clone)]
-struct SummaryConfig(u32, char);
+pub mod app;
+pub mod config;
+pub mod site;
+
+pub use app::*;
+pub use config::*;
+pub use site::*;
 
 #[derive(Clone)]
-struct Config {
-    author: String,
-    title: String,
-    root: String,
-    date_formatter: fn(String) -> String,
-    summary: SummaryConfig,
-    ext: String,
-    cache: u32,
-}
-
-#[derive(Clone)]
-struct Site {
-    config: Config,
-}
-
-impl Site {
-    fn build_response(&self) -> Result<String, ()> {
-        Ok(String::from("Hello world!"))
-    }
-}
-
-#[derive(Clone)]
-struct App {
-    config: Config,
-    site: Site,
-}
-
-#[derive(Clone)]
-struct OcypodeServer {
+pub struct Ocypode {
     app: App,
 }
 
-impl Service for OcypodeServer {
+impl Service for Ocypode {
     type ReqBody = Body;
     type ResBody = Body;
     type Error = hyper::Error;
@@ -64,7 +41,7 @@ impl Service for OcypodeServer {
     }
 }
 
-impl IntoFuture for OcypodeServer {
+impl IntoFuture for Ocypode {
     type Future = future::FutureResult<Self::Item, Self::Error>;
     type Item = Self;
     type Error = hyper::Error;
@@ -74,11 +51,11 @@ impl IntoFuture for OcypodeServer {
     }
 }
 
-impl NewService for OcypodeServer {
+impl NewService for Ocypode {
     type ReqBody = Body;
     type ResBody = Body;
     type Error = hyper::Error;
-    type Service = OcypodeServer;
+    type Service = Ocypode;
 
     type Future = future::FutureResult<Self::Service, Self::Error>;
     type InitError = Self::Error;
@@ -88,8 +65,12 @@ impl NewService for OcypodeServer {
     }
 }
 
-impl OcypodeServer {
-    fn start(self, port: u16) {
+impl Ocypode {
+    pub fn new(app: App) -> Ocypode {
+        Ocypode { app }
+    }
+
+    pub fn start(self, port: u16) {
         let addr = ([127, 0, 0, 1], port).into();
 
         let server = Server::bind(&addr)
@@ -98,27 +79,4 @@ impl OcypodeServer {
 
         hyper::rt::run(server);
     }
-}
-
-fn main() {
-    let config = Config {
-        author: String::from("Self"),
-        title: String::from("Title"),
-        root: String::from("/"),
-        date_formatter: |s| s,
-        summary: SummaryConfig(150, '~'),
-        ext: String::from("md"),
-        cache: 1200,
-    };
-
-    let app = App {
-        config: config.clone(),
-        site: Site {
-            config: config.clone(),
-        },
-    };
-
-    let ocypode = OcypodeServer { app: app };
-
-    ocypode.start(3000);
 }
