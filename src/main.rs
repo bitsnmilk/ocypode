@@ -50,7 +50,16 @@ impl Service for OcypodeServer {
     type Future = Box<dyn Future<Item = Response<Self::ResBody>, Error = Self::Error> + Send>;
 
     fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
-        let mut response = Response::new(Body::from("HELLO WORLD"));
+        let mut response = Response::new(Body::empty());
+        let (parts, _) = req.into_parts();
+        let (path, mime) = match parts.uri.path().find(".") {
+            Some(index) => parts.uri.path().split_at(index),
+            None => (parts.uri.path(), ""),
+        };
+        let route: Vec<&str> = path.split("/").filter(|p| !p.is_empty()).collect();
+
+        println!("hello world {:?}", route);
+
         Box::new(future::ok(response))
     }
 }
