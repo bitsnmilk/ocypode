@@ -1,11 +1,16 @@
+extern crate futures;
 extern crate hyper;
 
-use hyper::rt::Future;
-use hyper::service::service_fn_ok;
+use futures::future;
+use futures::future::Future;
+use futures::future::IntoFuture;
+use hyper::service::{NewService, Service};
 use hyper::{Body, Request, Response, Server};
 
+#[derive(Clone)]
 struct SummaryConfig(u32, char);
 
+#[derive(Clone)]
 struct Config {
     author: String,
     title: String,
@@ -16,26 +21,70 @@ struct Config {
     cache: u32,
 }
 
-struct Site<'a> {
-    config: &'a Config,
+#[derive(Clone)]
+struct Site {
+    config: Config,
 }
 
-struct OcypodeServer<'a> {
-    config: &'a Config,
-    site: Site<'a>,
-}
-
-impl<'a> OcypodeServer<'a> {
-    fn hello_world(_req: Request<Body>) -> Response<Body> {
-        Response::new(Body::from("Hello World"))
+impl Site {
+    fn build_response(&self) -> Result<String, ()> {
+        Ok(String::from("Hello world!"))
     }
+}
 
+#[derive(Clone)]
+struct App {
+    config: Config,
+    site: Site,
+}
+
+#[derive(Clone)]
+struct OcypodeServer {
+    app: App,
+}
+
+impl Service for OcypodeServer {
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = hyper::Error;
+    type Future = Box<dyn Future<Item = Response<Self::ResBody>, Error = Self::Error> + Send>;
+
+    fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
+        let mut response = Response::new(Body::from("HELLO WORLD"));
+        Box::new(future::ok(response))
+    }
+}
+
+impl IntoFuture for OcypodeServer {
+    type Future = future::FutureResult<Self::Item, Self::Error>;
+    type Item = Self;
+    type Error = hyper::Error;
+
+    fn into_future(self) -> Self::Future {
+        future::ok(self)
+    }
+}
+
+impl NewService for OcypodeServer {
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = hyper::Error;
+    type Service = OcypodeServer;
+
+    type Future = future::FutureResult<Self::Service, Self::Error>;
+    type InitError = Self::Error;
+
+    fn new_service(&self) -> Self::Future {
+        self.clone().into_future()
+    }
+}
+
+impl OcypodeServer {
     fn start(self, port: u16) {
-        let addr = ([127, 0, 0, 1], 3000).into();
-        let new_svc = || service_fn_ok(OcypodeServer::hello_world);
+        let addr = ([127, 0, 0, 1], port).into();
 
         let server = Server::bind(&addr)
-            .serve(new_svc)
+            .serve(self)
             .map_err(|e| eprintln!("server error: {}", e));
 
         hyper::rt::run(server);
@@ -53,10 +102,14 @@ fn main() {
         cache: 1200,
     };
 
-    let ocypode = OcypodeServer {
-        config: &config,
-        site: Site { config: &config },
+    let app = App {
+        config: config.clone(),
+        site: Site {
+            config: config.clone(),
+        },
     };
+
+    let ocypode = OcypodeServer { app: app };
 
     ocypode.start(3000);
 }
